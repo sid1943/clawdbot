@@ -5,6 +5,40 @@ type ToolCallLike = {
   name?: string;
 };
 
+type ToolCallBlock = {
+  type?: unknown;
+  id?: unknown;
+  name?: unknown;
+  arguments?: unknown;
+  partialJson?: unknown;
+};
+
+/**
+ * Detects tool calls that were interrupted mid-stream before completion.
+ *
+ * When a streaming response terminates early (e.g., due to network errors or
+ * model stop signals), tool call blocks may have:
+ * - `partialJson` present (indicating streaming was in progress)
+ * - Missing, null, or empty `arguments` object (never fully received)
+ *
+ * These incomplete calls should NOT be treated as valid tool invocations since
+ * generating synthetic error results for them causes "unexpected tool_use_id"
+ * API errors on subsequent requests.
+ */
+function isIncompleteToolCall(block: ToolCallBlock): boolean {
+  // Only consider blocks with actual partial JSON content as potentially incomplete
+  if (typeof block.partialJson !== "string" || !block.partialJson) return false;
+
+  const args = block.arguments;
+  // Missing or null arguments means the call never completed
+  if (args === undefined || args === null) return true;
+  // Empty object (not array) means arguments were never populated
+  if (typeof args === "object" && !Array.isArray(args) && Object.keys(args as object).length === 0)
+    return true;
+
+  return false;
+}
+
 function extractToolCallsFromAssistant(
   msg: Extract<AgentMessage, { role: "assistant" }>,
 ): ToolCallLike[] {
@@ -14,10 +48,13 @@ function extractToolCallsFromAssistant(
   const toolCalls: ToolCallLike[] = [];
   for (const block of content) {
     if (!block || typeof block !== "object") continue;
-    const rec = block as { type?: unknown; id?: unknown; name?: unknown };
+    const rec = block as ToolCallBlock;
     if (typeof rec.id !== "string" || !rec.id) continue;
 
     if (rec.type === "toolCall" || rec.type === "toolUse" || rec.type === "functionCall") {
+      // Skip incomplete tool calls that were interrupted mid-stream
+      if (isIncompleteToolCall(rec)) continue;
+
       toolCalls.push({
         id: rec.id,
         name: typeof rec.name === "string" ? rec.name : undefined,
