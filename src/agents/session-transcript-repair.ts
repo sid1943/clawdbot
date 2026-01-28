@@ -121,7 +121,7 @@ export function repairToolUseResultPairing(messages: AgentMessage[]): ToolUseRep
     // When stopReason is "error", the tool_use blocks are incomplete and were never executed,
     // so we should not create synthetic tool_results for them.
     const stopReason = (assistant as { stopReason?: unknown }).stopReason;
-    if (stopReason === "error") {
+    if (stopReason === "error" || stopReason === "aborted") {
       out.push(msg);
       continue;
     }
