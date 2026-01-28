@@ -333,7 +333,9 @@ export async function readSystemdServiceRuntime(
   }
   const parsed = parseSystemdShow(res.stdout || "");
   const activeState = parsed.activeState?.toLowerCase();
-  const status = activeState === "active" ? "running" : activeState ? "stopped" : "unknown";
+  // Only report "stopped" for truly inactive state; transitional states (activating, deactivating, reloading) should be "unknown"
+  const status =
+    activeState === "active" ? "running" : activeState === "inactive" ? "stopped" : "unknown";
   return {
     status,
     state: parsed.activeState,
@@ -354,7 +356,15 @@ async function isSystemctlAvailable(): Promise<boolean> {
   const res = await execSystemctl(["--user", "status"]);
   if (res.code === 0) return true;
   const detail = `${res.stderr || res.stdout}`.toLowerCase();
-  return !detail.includes("not found");
+  if (!detail) return false;
+  // Match the logic in isSystemdUserServiceAvailable() - only return true if systemd is present
+  if (detail.includes("not found")) return false;
+  if (detail.includes("failed to connect")) return false;
+  if (detail.includes("not been booted")) return false;
+  if (detail.includes("no such file or directory")) return false;
+  if (detail.includes("not supported")) return false;
+  // For unknown errors, assume systemctl is available (conservative for this internal check)
+  return true;
 }
 
 export async function findLegacySystemdUnits(
