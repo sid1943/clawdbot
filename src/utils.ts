@@ -25,12 +25,16 @@ export function assertWebChannel(input: string): asserts input is WebChannel {
 }
 
 export function normalizePath(p: string): string {
-  if (!p.startsWith("/")) return `/${p}`;
-  return p;
+  const trimmed = p?.trim() ?? "";
+  if (!trimmed) return "/";
+  if (!trimmed.startsWith("/")) return `/${trimmed}`;
+  return trimmed;
 }
 
 export function withWhatsAppPrefix(number: string): string {
-  return number.startsWith("whatsapp:") ? number : `whatsapp:${number}`;
+  const trimmed = number?.trim() ?? "";
+  if (!trimmed) return "whatsapp:";
+  return trimmed.startsWith("whatsapp:") ? trimmed : `whatsapp:${trimmed}`;
 }
 
 export function normalizeE164(number: string): string {

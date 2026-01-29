@@ -58,6 +58,11 @@ const SHELL_ENV_EXPECTED_KEYS = [
 ];
 
 const CONFIG_BACKUP_COUNT = 5;
+
+/** Format config validation warnings for logging. */
+function formatConfigWarnings(warnings: Array<{ path?: string; message: string }>): string {
+  return warnings.map((w) => `- ${w.path || "<root>"}: ${w.message}`).join("\n");
+}
 const loggedInvalidConfigs = new Set<string>();
 
 export type ParseConfigJson5Result = { ok: true; parsed: unknown } | { ok: false; error: string };
@@ -259,10 +264,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         throw error;
       }
       if (validated.warnings.length > 0) {
-        const details = validated.warnings
-          .map((iss) => `- ${iss.path || "<root>"}: ${iss.message}`)
-          .join("\n");
-        deps.logger.warn(`Config warnings:\\n${details}`);
+        deps.logger.warn(`Config warnings:\n${formatConfigWarnings(validated.warnings)}`);
       }
       warnIfConfigFromFuture(validated.config, deps.logger);
       const cfg = applyModelDefaults(
@@ -478,10 +480,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       throw new Error(`Config validation failed: ${pathLabel}: ${issue?.message ?? "invalid"}`);
     }
     if (validated.warnings.length > 0) {
-      const details = validated.warnings
-        .map((warning) => `- ${warning.path}: ${warning.message}`)
-        .join("\n");
-      deps.logger.warn(`Config warnings:\n${details}`);
+      deps.logger.warn(`Config warnings:\n${formatConfigWarnings(validated.warnings)}`);
     }
     const dir = path.dirname(configPath);
     await deps.fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });

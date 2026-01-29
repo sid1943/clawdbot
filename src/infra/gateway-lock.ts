@@ -5,9 +5,18 @@ import path from "node:path";
 
 import { resolveConfigPath, resolveGatewayLockDir, resolveStateDir } from "../config/paths.js";
 
-const DEFAULT_TIMEOUT_MS = 5000;
-const DEFAULT_POLL_INTERVAL_MS = 100;
-const DEFAULT_STALE_MS = 30_000;
+function parseEnvInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+// Lock acquisition timeout - how long to wait for an existing lock to be released
+const DEFAULT_TIMEOUT_MS = parseEnvInt(process.env.MOLTBOT_GATEWAY_LOCK_TIMEOUT_MS, 5000);
+// Polling interval when waiting for lock
+const DEFAULT_POLL_INTERVAL_MS = parseEnvInt(process.env.MOLTBOT_GATEWAY_LOCK_POLL_MS, 100);
+// Stale lock threshold - locks older than this with unknown owner status are removed
+const DEFAULT_STALE_MS = parseEnvInt(process.env.MOLTBOT_GATEWAY_LOCK_STALE_MS, 30_000);
 
 type LockPayload = {
   pid: number;

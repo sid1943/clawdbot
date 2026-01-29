@@ -6,6 +6,10 @@ type Warning = Error & {
   message?: string;
 };
 
+type WarningFilterState = {
+  installed: boolean;
+};
+
 function shouldIgnoreWarning(warning: Warning): boolean {
   if (warning.code === "DEP0040" && warning.message?.includes("punycode")) {
     return true;
@@ -24,10 +28,25 @@ function shouldIgnoreWarning(warning: Warning): boolean {
 
 export function installProcessWarningFilter(): void {
   const globalState = globalThis as typeof globalThis & {
-    [warningFilterKey]?: { installed: boolean };
+    [warningFilterKey]?: WarningFilterState;
   };
-  if (globalState[warningFilterKey]?.installed) return;
-  globalState[warningFilterKey] = { installed: true };
+
+  // Atomic check-and-set: define property only if not already defined
+  // This prevents race conditions in concurrent initialization
+  if (!globalState[warningFilterKey]) {
+    try {
+      Object.defineProperty(globalState, warningFilterKey, {
+        value: { installed: true } satisfies WarningFilterState,
+        writable: false,
+        configurable: false,
+      });
+    } catch {
+      // Property already defined by another concurrent call
+      return;
+    }
+  } else {
+    return;
+  }
 
   process.on("warning", (warning: Warning) => {
     if (shouldIgnoreWarning(warning)) return;

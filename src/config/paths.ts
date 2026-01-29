@@ -57,6 +57,13 @@ export function resolveStateDir(
   return legacyDir;
 }
 
+/**
+ * Resolve a user-provided path, expanding ~ to home directory.
+ * NOTE: This is a local copy of the same function in src/utils.ts.
+ * We keep a local copy here to avoid circular imports, since this module
+ * is used at module initialization time (STATE_DIR constant) and utils.ts
+ * imports from this module.
+ */
 function resolveUserPath(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return trimmed;

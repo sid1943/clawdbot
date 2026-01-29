@@ -151,6 +151,8 @@ export async function startSshPortForward(opts: {
 
   const stop = async () => {
     if (child.killed) return;
+    // Remove stderr listener to prevent memory leaks
+    child.stderr?.removeAllListeners("data");
     child.kill("SIGTERM");
     await new Promise<void>((resolve) => {
       const t = setTimeout(() => {
