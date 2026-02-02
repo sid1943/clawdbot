@@ -1,0 +1,40 @@
+{
+  "last_updated": "2026-02-02T04:02:26Z",
+  "current_tier": 1,
+  "current_costs": 0,
+  "earnings_history": {
+    "2026-02": {
+      "gross": 150,
+      "fees": 30,
+      "net": 120,
+      "sources": {
+        "upwork": 120,
+        "fiverr": 0,
+        "contra": 0,
+        "direct": 0
+      }
+    }
+  },
+  "avg_3_month": 120,
+  "recommended_action": "UPGRADE TO TIER 2",
+  "next_review": "2026-03-01",
+  "upgrade_readiness": {
+    "tier_2": true,
+    "tier_3": false,
+    "tier_4": false,
+    "tier_5": false
+  },
+  "tier_thresholds": {
+    "tier_2": 50,
+    "tier_3": 200,
+    "tier_4": 500,
+    "tier_5": 1000
+  },
+  "tier_costs": {
+    "tier_1": 0,
+    "tier_2": 50,
+    "tier_3": 200,
+    "tier_4": 500,
+    "tier_5": 1500
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "current_tier": 1,
+  "current_tier_cost": 0,
+  "monthly_earnings": {
+    "2026-02": 0,
+    "2026-03": 0
+  },
+  "3_month_avg": 120,
+  "recommended_tier": 2,
+  "upgrade_threshold": 50,
+  "next_review_date": "2026-03-01"
+}
