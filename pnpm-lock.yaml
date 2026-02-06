@@ -320,6 +320,8 @@ importers:
 
   extensions/imessage: {}
 
+  extensions/iptv-client: {}
+
   extensions/line:
     devDependencies:
       clawdbot:
