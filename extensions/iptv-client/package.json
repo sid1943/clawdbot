@@ -1,9 +1,0 @@
-{
-  "name": "@clawdbot/iptv-client",
-  "version": "2026.1.25",
-  "type": "module",
-  "description": "IPTV client for LG webOS TVs — Indian channels + world sports",
-  "clawdbot": {
-    "extensions": ["./index.ts"]
-  }
-}
