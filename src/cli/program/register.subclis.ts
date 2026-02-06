@@ -222,6 +222,14 @@ const entries: SubCliEntry[] = [
       mod.registerUpdateCli(program);
     },
   },
+  {
+    name: "exfoliate",
+    description: "The Lobster's battle cry",
+    register: async (program) => {
+      const mod = await import("../exfoliate-cli.js");
+      mod.registerExfoliateCli(program);
+    },
+  },
 ];
 
 function removeCommand(program: Command, command: Command) {
