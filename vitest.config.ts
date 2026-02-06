@@ -23,7 +23,7 @@ export default defineConfig({
     include: [
       "src/**/*.test.ts",
       "extensions/**/*.test.ts",
-      "apps/webos-iptv/**/*.test.ts",
+      "webos-iptv/**/*.test.ts",
       "test/format-error.test.ts",
     ],
     setupFiles: ["test/setup.ts"],
