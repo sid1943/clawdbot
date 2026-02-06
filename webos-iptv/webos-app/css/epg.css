@@ -1,0 +1,157 @@
+/* EPG (Electronic Programme Guide) grid */
+
+#epg-container {
+  width: 1920px;
+  height: 1080px;
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  z-index: 400;
+  transform: none;
+}
+
+#epg-container.hidden {
+  transform: translateY(100%);
+}
+
+#epg-header {
+  padding: 24px 32px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#epg-title {
+  font-size: 32px;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+
+#epg-timeline {
+  display: flex;
+  padding-left: 240px;
+  height: 40px;
+  align-items: center;
+  overflow: hidden;
+}
+
+.epg-time-slot {
+  flex-shrink: 0;
+  width: 280px;
+  font-size: 18px;
+  color: var(--text-muted);
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+}
+
+.epg-time-slot.now {
+  color: var(--accent);
+}
+
+#epg-grid {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+/* EPG channel row */
+.epg-row {
+  display: flex;
+  height: 80px;
+  border-bottom: 1px solid var(--border);
+}
+
+.epg-row-channel {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-right: 1px solid var(--border);
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+.epg-row-channel-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.epg-row-channel-name {
+  font-size: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.epg-row-programmes {
+  display: flex;
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+/* Individual programme cell */
+.epg-programme {
+  height: 100%;
+  border-right: 1px solid var(--border);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background var(--transition);
+  flex-shrink: 0;
+}
+
+.epg-programme:hover,
+.epg-programme:focus {
+  background: var(--bg-hover);
+}
+
+.epg-programme:focus {
+  background: var(--bg-focus);
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
+.epg-programme.now-playing {
+  background: rgba(255, 140, 0, 0.08);
+}
+
+.epg-programme-title {
+  font-size: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.epg-programme-time {
+  font-size: 15px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Current time marker */
+.epg-now-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* EPG category colors */
+.epg-programme[data-category="Sports"] { border-left: 3px solid #4caf50; }
+.epg-programme[data-category="News"] { border-left: 3px solid #2196f3; }
+.epg-programme[data-category="Entertainment"] { border-left: 3px solid #e91e63; }
+.epg-programme[data-category="Movie"] { border-left: 3px solid #9c27b0; }
+.epg-programme[data-category="Kids"] { border-left: 3px solid #ff9800; }
+.epg-programme[data-category="Music"] { border-left: 3px solid #00bcd4; }

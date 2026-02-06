@@ -1,0 +1,24 @@
+{
+  "name": "webos-iptv",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "IPTV client for LG OLED77B5PUA (webOS 25) — Indian channels + world sports",
+  "scripts": {
+    "setup": "bun run scripts/setup-tv.ts",
+    "build": "bun run src/build/bundler.ts",
+    "package": "bun run scripts/package.ts",
+    "deploy": "bun run scripts/deploy.ts",
+    "dev": "bun run scripts/dev.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.0",
+    "vitest": "^4.0.0",
+    "typescript": "^5.7.0"
+  }
+}
