@@ -73,6 +73,9 @@ const routeSessions: RouteSpec = {
   match: (path) => path[0] === "sessions",
   run: async (argv) => {
     const json = hasFlag(argv, "--json");
+    const resetMain = hasFlag(argv, "--reset-main");
+    const keepTranscript = hasFlag(argv, "--keep-transcript");
+    const yes = hasFlag(argv, "--yes");
     const store = getFlagValue(argv, "--store");
     if (store === null) {
       return false;
@@ -81,7 +84,7 @@ const routeSessions: RouteSpec = {
     if (active === null) {
       return false;
     }
-    await sessionsCommand({ json, store, active }, defaultRuntime);
+    await sessionsCommand({ json, store, active, resetMain, keepTranscript, yes }, defaultRuntime);
     return true;
   },
 };

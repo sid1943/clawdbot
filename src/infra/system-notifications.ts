@@ -5,6 +5,8 @@ import { resolveOutboundTarget } from "./outbound/targets.js";
 
 const SENSITIVE_SYSTEM_NOTIFICATION_RE =
   /(pairing code:|openclaw:\s*access not configured|gateway connected|gateway disconnected|^system:)/i;
+const INLINE_SECRET_RE = /\b(token|api[_-]?key|secret|password)\b(\s*[:=]\s*)([a-z0-9._-]{10,})/gi;
+const BEARER_SECRET_RE = /\b(bearer)(\s+)([a-z0-9._-]{16,})\b/gi;
 
 function firstAllowFromEntry(entries?: Array<string | number>): string | undefined {
   if (!Array.isArray(entries)) {
@@ -51,6 +53,31 @@ export function isSensitiveSystemNotification(text: string): boolean {
   return Boolean(trimmed) && SENSITIVE_SYSTEM_NOTIFICATION_RE.test(trimmed);
 }
 
+function maskSecretValue(raw: string): string {
+  if (raw.length <= 8) {
+    return "***";
+  }
+  return `${raw.slice(0, 4)}***${raw.slice(-3)}`;
+}
+
+export function sanitizeSystemNotificationText(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const maskedInline = trimmed.replace(
+    INLINE_SECRET_RE,
+    (_full, key: string, sep: string, value: string) => {
+      return `${key}${sep}${maskSecretValue(value)}`;
+    },
+  );
+  return maskedInline.replace(
+    BEARER_SECRET_RE,
+    (_full, prefix: string, sep: string, value: string) =>
+      `${prefix}${sep}${maskSecretValue(value)}`,
+  );
+}
+
 export type CrossAppSystemNotificationReason =
   | "explicit_service_status_request"
   | "no_response_escalation";
@@ -74,7 +101,8 @@ export async function sendSystemNotificationToTelegramAdmin(params: {
   if (!isAllowedCrossAppSystemNotificationReason(params.reason)) {
     return false;
   }
-  if (!isSensitiveSystemNotification(params.text)) {
+  const sanitizedText = sanitizeSystemNotificationText(params.text);
+  if (!isSensitiveSystemNotification(params.text) || !sanitizedText) {
     return false;
   }
   const target = resolveTelegramAdminTarget(params.cfg);
@@ -96,7 +124,7 @@ export async function sendSystemNotificationToTelegramAdmin(params: {
     channel: "telegram",
     to: resolved.to,
     accountId: target.accountId,
-    payloads: [{ text: params.text }],
+    payloads: [{ text: sanitizedText }],
     deps: params.deps,
     bestEffort: true,
   });

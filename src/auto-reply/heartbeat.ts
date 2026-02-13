@@ -99,8 +99,12 @@ function stripHeartbeatPromptScaffold(raw: string): { text: string; didStrip: bo
     return { text: "", didStrip: false };
   }
   const lower = trimmed.toLowerCase();
-  const promptNeedle = "read heartbeat.md if it exists (workspace context).";
-  if (!lower.includes(promptNeedle)) {
+  const hasScaffoldMarker =
+    lower.includes("read heartbeat.md if it exists (workspace context).") ||
+    lower.includes("conversation info (untrusted metadata):") ||
+    lower.includes("heartbeat poll") ||
+    lower.includes("heartbeat wake");
+  if (!hasScaffoldMarker) {
     return { text: trimmed, didStrip: false };
   }
 

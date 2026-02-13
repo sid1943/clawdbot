@@ -145,4 +145,60 @@ describe("sessionsCommand", () => {
     expect(group?.totalTokens).toBeNull();
     expect(group?.totalTokensFresh).toBe(false);
   });
+
+  it("requires explicit confirmation for main session reset", async () => {
+    const store = writeStore({
+      "agent:main:main": {
+        sessionId: "main-session",
+        updatedAt: Date.now(),
+      },
+    });
+    const { runtime } = makeRuntime();
+
+    await expect(sessionsCommand({ store, resetMain: true }, runtime)).rejects.toThrow(
+      "--reset-main requires --yes",
+    );
+
+    fs.rmSync(store);
+  });
+
+  it("resets main session and archives transcript", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sessions-reset-"));
+    const store = path.join(dir, "sessions.json");
+    const transcript = path.join(dir, "main-transcript.jsonl");
+
+    fs.writeFileSync(transcript, "session transcript");
+    fs.writeFileSync(
+      store,
+      JSON.stringify(
+        {
+          "agent:main:main": {
+            sessionId: "main-session",
+            sessionFile: transcript,
+            updatedAt: Date.now(),
+          },
+          "agent:main:telegram:direct:6438593762": {
+            sessionId: "other-session",
+            updatedAt: Date.now(),
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const { runtime, logs } = makeRuntime();
+    await sessionsCommand({ store, resetMain: true, yes: true }, runtime);
+
+    const nextStore = JSON.parse(fs.readFileSync(store, "utf-8")) as Record<string, unknown>;
+    expect(nextStore["agent:main:main"]).toBeUndefined();
+    expect(nextStore["agent:main:telegram:direct:6438593762"]).toBeDefined();
+
+    const files = fs.readdirSync(dir);
+    expect(files.some((name) => name.startsWith("sessions.json.backup.manual-reset."))).toBe(true);
+    expect(files.some((name) => name.startsWith("main-transcript.jsonl.reset-"))).toBe(true);
+    expect(logs.some((line) => line.includes("Main session reset: agent:main:main"))).toBe(true);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });

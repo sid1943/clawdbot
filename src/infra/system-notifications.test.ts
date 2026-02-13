@@ -12,8 +12,11 @@ vi.mock("./outbound/targets.js", () => ({
   resolveOutboundTarget: (...args: unknown[]) => resolveOutboundTargetMock(...args),
 }));
 
-const { isSensitiveSystemNotification, sendSystemNotificationToTelegramAdmin } =
-  await import("./system-notifications.js");
+const {
+  isSensitiveSystemNotification,
+  sanitizeSystemNotificationText,
+  sendSystemNotificationToTelegramAdmin,
+} = await import("./system-notifications.js");
 
 function createTestConfig(): OpenClawConfig {
   return {
@@ -38,6 +41,19 @@ describe("system-notifications", () => {
     expect(isSensitiveSystemNotification("normal user reply")).toBe(false);
   });
 
+  it("redacts token-like secrets in notification text", () => {
+    expect(
+      sanitizeSystemNotificationText(
+        "System: gateway connected token=abcd1234efgh5678 Bearer abcdefghijklmnopqrstuv",
+      ),
+    ).toContain("token=abcd***678");
+    expect(
+      sanitizeSystemNotificationText(
+        "System: gateway connected token=abcd1234efgh5678 Bearer abcdefghijklmnopqrstuv",
+      ),
+    ).toContain("Bearer abcd***tuv");
+  });
+
   it("sends sensitive notifications to telegram allowFrom target", async () => {
     const sent = await sendSystemNotificationToTelegramAdmin({
       cfg: createTestConfig(),
@@ -53,6 +69,21 @@ describe("system-notifications", () => {
       }),
     );
     expect(deliverOutboundPayloadsMock).toHaveBeenCalled();
+  });
+
+  it("keeps pairing code messages unchanged for admin delivery", async () => {
+    const sent = await sendSystemNotificationToTelegramAdmin({
+      cfg: createTestConfig(),
+      text: "Pairing code: ABCD1234",
+      reason: "explicit_service_status_request",
+    });
+
+    expect(sent).toBe(true);
+    expect(deliverOutboundPayloadsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payloads: [{ text: "Pairing code: ABCD1234" }],
+      }),
+    );
   });
 
   it("does not send when cross-app reason is missing", async () => {

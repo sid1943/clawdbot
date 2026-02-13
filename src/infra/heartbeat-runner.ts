@@ -71,8 +71,65 @@ type HeartbeatDeps = OutboundSendDeps &
 const log = createSubsystemLogger("gateway/heartbeat");
 let heartbeatsEnabled = true;
 
+const HEARTBEAT_FAILURE_THRESHOLD = 3;
+const HEARTBEAT_CIRCUIT_COOLDOWN_MS = 5 * 60 * 1000;
+
+type HeartbeatFailureState = {
+  failures: number;
+  lastFailureAt: number;
+  circuitOpenUntil?: number;
+};
+
+const heartbeatFailureStateBySession = new Map<string, HeartbeatFailureState>();
+
 export function setHeartbeatsEnabled(enabled: boolean) {
   heartbeatsEnabled = enabled;
+}
+
+export function resetHeartbeatFailureStateForTest() {
+  heartbeatFailureStateBySession.clear();
+}
+
+function resolveHeartbeatCircuitState(params: { sessionKey: string; nowMs: number }): {
+  open: boolean;
+  failures: number;
+  openUntil?: number;
+} {
+  const current = heartbeatFailureStateBySession.get(params.sessionKey);
+  if (!current) {
+    return { open: false, failures: 0 };
+  }
+  const openUntil = current.circuitOpenUntil;
+  if (typeof openUntil === "number" && openUntil > params.nowMs) {
+    return { open: true, failures: current.failures, openUntil };
+  }
+  if (typeof openUntil === "number" && openUntil <= params.nowMs) {
+    heartbeatFailureStateBySession.delete(params.sessionKey);
+    return { open: false, failures: 0 };
+  }
+  return { open: false, failures: current.failures };
+}
+
+function recordHeartbeatFailure(params: {
+  sessionKey: string;
+  nowMs: number;
+}): HeartbeatFailureState {
+  const previous = heartbeatFailureStateBySession.get(params.sessionKey);
+  const failures = (previous?.failures ?? 0) + 1;
+  const next: HeartbeatFailureState = {
+    failures,
+    lastFailureAt: params.nowMs,
+    circuitOpenUntil:
+      failures >= HEARTBEAT_FAILURE_THRESHOLD
+        ? params.nowMs + HEARTBEAT_CIRCUIT_COOLDOWN_MS
+        : undefined,
+  };
+  heartbeatFailureStateBySession.set(params.sessionKey, next);
+  return next;
+}
+
+function clearHeartbeatFailureState(sessionKey: string) {
+  heartbeatFailureStateBySession.delete(sessionKey);
 }
 
 type HeartbeatConfig = AgentDefaultsConfig["heartbeat"];
@@ -454,6 +511,25 @@ export async function runHeartbeatOnce(opts: {
   const { entry, sessionKey, storePath } = resolveHeartbeatSession(cfg, agentId, heartbeat);
   const previousUpdatedAt = entry?.updatedAt;
   const delivery = resolveHeartbeatDeliveryTarget({ cfg, entry, heartbeat });
+  const applyCircuitBreaker = !isExecEventReason && !isCronEventReason;
+  if (applyCircuitBreaker) {
+    const circuitState = resolveHeartbeatCircuitState({ sessionKey, nowMs: startedAt });
+    if (circuitState.open) {
+      emitHeartbeatEvent({
+        status: "skipped",
+        reason: "circuit-open",
+        durationMs: Date.now() - startedAt,
+        channel: delivery.channel !== "none" ? delivery.channel : undefined,
+        accountId: delivery.accountId,
+      });
+      log.warn("heartbeat skipped due to open circuit", {
+        sessionKey,
+        failures: circuitState.failures,
+        openUntil: circuitState.openUntil,
+      });
+      return { status: "skipped", reason: "circuit-open" };
+    }
+  }
   const heartbeatAccountId = heartbeat?.accountId?.trim();
   if (delivery.reason === "unknown-account") {
     log.warn("heartbeat: unknown accountId", {
@@ -544,6 +620,9 @@ export async function runHeartbeatOnce(opts: {
   };
 
   try {
+    const markHeartbeatSuccess = () => {
+      clearHeartbeatFailureState(sessionKey);
+    };
     const heartbeatModelOverride = heartbeat?.model?.trim() || undefined;
     const replyOpts = heartbeatModelOverride
       ? { isHeartbeat: true, heartbeatModelOverride }
@@ -574,6 +653,7 @@ export async function runHeartbeatOnce(opts: {
         silent: !okSent,
         indicatorType: visibility.useIndicator ? resolveIndicatorType("ok-empty") : undefined,
       });
+      markHeartbeatSuccess();
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
 
@@ -608,6 +688,7 @@ export async function runHeartbeatOnce(opts: {
         silent: !okSent,
         indicatorType: visibility.useIndicator ? resolveIndicatorType("ok-token") : undefined,
       });
+      markHeartbeatSuccess();
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
 
@@ -643,6 +724,7 @@ export async function runHeartbeatOnce(opts: {
         channel: delivery.channel !== "none" ? delivery.channel : undefined,
         accountId: delivery.accountId,
       });
+      markHeartbeatSuccess();
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
 
@@ -663,6 +745,7 @@ export async function runHeartbeatOnce(opts: {
         hasMedia: mediaUrls.length > 0,
         accountId: delivery.accountId,
       });
+      markHeartbeatSuccess();
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
 
@@ -682,6 +765,7 @@ export async function runHeartbeatOnce(opts: {
         accountId: delivery.accountId,
         indicatorType: visibility.useIndicator ? resolveIndicatorType("sent") : undefined,
       });
+      markHeartbeatSuccess();
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
 
@@ -707,6 +791,7 @@ export async function runHeartbeatOnce(opts: {
           channel: delivery.channel,
           reason: readiness.reason,
         });
+        markHeartbeatSuccess();
         return { status: "skipped", reason: readiness.reason };
       }
     }
@@ -754,19 +839,27 @@ export async function runHeartbeatOnce(opts: {
       accountId: delivery.accountId,
       indicatorType: visibility.useIndicator ? resolveIndicatorType("sent") : undefined,
     });
+    markHeartbeatSuccess();
     return { status: "ran", durationMs: Date.now() - startedAt };
   } catch (err) {
     const reason = formatErrorMessage(err);
+    const nowMs = opts.deps?.nowMs?.() ?? Date.now();
+    const failureState = applyCircuitBreaker
+      ? recordHeartbeatFailure({ sessionKey, nowMs })
+      : undefined;
+    const reasonWithTags = failureState
+      ? `${reason} (failures=${failureState.failures}${failureState.circuitOpenUntil ? "; circuit=open" : ""})`
+      : reason;
     emitHeartbeatEvent({
       status: "failed",
-      reason,
+      reason: reasonWithTags,
       durationMs: Date.now() - startedAt,
       channel: delivery.channel !== "none" ? delivery.channel : undefined,
       accountId: delivery.accountId,
       indicatorType: visibility.useIndicator ? resolveIndicatorType("failed") : undefined,
     });
-    log.error(`heartbeat failed: ${reason}`, { error: reason });
-    return { status: "failed", reason };
+    log.error(`heartbeat failed: ${reasonWithTags}`, { error: reasonWithTags });
+    return { status: "failed", reason: reasonWithTags };
   }
 }
 

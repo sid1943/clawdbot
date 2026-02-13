@@ -138,6 +138,19 @@ HEARTBEAT_OK`;
       didStrip: true,
     });
   });
+
+  it("drops metadata-only heartbeat echoes even without prompt line", () => {
+    const echoed = `Conversation info (untrusted metadata):
+{
+  "conversation_label": "telegram:6438593762"
+}
+HEARTBEAT_OK`;
+    expect(stripHeartbeatToken(echoed, { mode: "heartbeat" })).toEqual({
+      shouldSkip: true,
+      text: "",
+      didStrip: true,
+    });
+  });
 });
 
 describe("isHeartbeatContentEffectivelyEmpty", () => {

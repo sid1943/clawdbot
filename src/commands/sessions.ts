@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { RuntimeEnv } from "../runtime.js";
 import { lookupContextTokens } from "../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
@@ -5,7 +7,9 @@ import { resolveConfiguredModelRef } from "../agents/model-selection.js";
 import { loadConfig } from "../config/config.js";
 import {
   loadSessionStore,
+  resolveMainSessionKey,
   resolveFreshSessionTotalTokens,
+  saveSessionStore,
   resolveStorePath,
   type SessionEntry,
 } from "../config/sessions.js";
@@ -33,6 +37,27 @@ type SessionRow = {
   totalTokensFresh?: boolean;
   model?: string;
   contextTokens?: number;
+};
+
+type SessionsCommandOpts = {
+  json?: boolean;
+  store?: string;
+  active?: string;
+  resetMain?: boolean;
+  yes?: boolean;
+  keepTranscript?: boolean;
+};
+
+type MainSessionResetResult = {
+  requested: boolean;
+  performed: boolean;
+  mainSessionKey: string;
+  backupPath?: string;
+  removedSessionId?: string;
+  removedSessionFile?: string;
+  archivedTranscriptPath?: string;
+  transcriptArchived: boolean;
+  transcriptArchiveError?: string;
 };
 
 const KIND_PAD = 6;
@@ -174,10 +199,97 @@ function toRows(store: Record<string, SessionEntry>): SessionRow[] {
     .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 }
 
-export async function sessionsCommand(
-  opts: { json?: boolean; store?: string; active?: string },
-  runtime: RuntimeEnv,
-) {
+function formatResetTimestamp(nowMs: number) {
+  const d = new Date(nowMs);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}${mm}${dd}-${hh}${mi}${ss}`;
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resetMainSession(params: {
+  cfg: ReturnType<typeof loadConfig>;
+  storePath: string;
+  store: Record<string, SessionEntry>;
+  archiveTranscript: boolean;
+}): Promise<{ store: Record<string, SessionEntry>; result: MainSessionResetResult }> {
+  const now = Date.now();
+  const stamp = formatResetTimestamp(now);
+  const mainSessionKey = resolveMainSessionKey(params.cfg);
+  const entry = params.store[mainSessionKey];
+
+  if (!entry) {
+    return {
+      store: params.store,
+      result: {
+        requested: true,
+        performed: false,
+        mainSessionKey,
+        transcriptArchived: false,
+      },
+    };
+  }
+
+  const backupPath = `${params.storePath}.backup.manual-reset.${stamp}`;
+  await fs.copyFile(params.storePath, backupPath);
+
+  const nextStore = { ...params.store };
+  delete nextStore[mainSessionKey];
+  await saveSessionStore(params.storePath, nextStore);
+
+  let archivedTranscriptPath: string | undefined;
+  let transcriptArchiveError: string | undefined;
+  let transcriptArchived = false;
+  const sessionFile = entry.sessionFile?.trim();
+
+  if (params.archiveTranscript && sessionFile) {
+    try {
+      const resolvedSessionFile = path.resolve(sessionFile);
+      if (await pathExists(resolvedSessionFile)) {
+        archivedTranscriptPath = `${resolvedSessionFile}.reset-${stamp}`;
+        await fs.rename(resolvedSessionFile, archivedTranscriptPath);
+        transcriptArchived = true;
+      }
+    } catch (err) {
+      transcriptArchiveError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  return {
+    store: nextStore,
+    result: {
+      requested: true,
+      performed: true,
+      mainSessionKey,
+      backupPath,
+      removedSessionId: entry.sessionId,
+      removedSessionFile: sessionFile,
+      archivedTranscriptPath,
+      transcriptArchived,
+      transcriptArchiveError,
+    },
+  };
+}
+
+export async function sessionsCommand(opts: SessionsCommandOpts, runtime: RuntimeEnv) {
+  if (opts.resetMain && !opts.yes) {
+    runtime.error("--reset-main requires --yes");
+    runtime.exit(1);
+    return;
+  }
+
   const cfg = loadConfig();
   const resolved = resolveConfiguredModelRef({
     cfg,
@@ -190,7 +302,19 @@ export async function sessionsCommand(
     DEFAULT_CONTEXT_TOKENS;
   const configModel = resolved.model ?? DEFAULT_MODEL;
   const storePath = resolveStorePath(opts.store ?? cfg.session?.store);
-  const store = loadSessionStore(storePath);
+  let store = loadSessionStore(storePath);
+
+  let resetResult: MainSessionResetResult | null = null;
+  if (opts.resetMain) {
+    const reset = await resetMainSession({
+      cfg,
+      storePath,
+      store,
+      archiveTranscript: !opts.keepTranscript,
+    });
+    store = reset.store;
+    resetResult = reset.result;
+  }
 
   let activeMinutes: number | undefined;
   if (opts.active !== undefined) {
@@ -220,6 +344,7 @@ export async function sessionsCommand(
           path: storePath,
           count: rows.length,
           activeMinutes: activeMinutes ?? null,
+          resetMain: resetResult,
           sessions: rows.map((r) => ({
             ...r,
             totalTokens: resolveFreshSessionTotalTokens(r) ?? null,
@@ -239,6 +364,21 @@ export async function sessionsCommand(
 
   runtime.log(info(`Session store: ${storePath}`));
   runtime.log(info(`Sessions listed: ${rows.length}`));
+  if (resetResult) {
+    if (!resetResult.performed) {
+      runtime.log(info(`Main session not found for key: ${resetResult.mainSessionKey}`));
+    } else {
+      runtime.log(info(`Main session reset: ${resetResult.mainSessionKey}`));
+      if (resetResult.backupPath) {
+        runtime.log(info(`Backup written: ${resetResult.backupPath}`));
+      }
+      if (resetResult.transcriptArchived && resetResult.archivedTranscriptPath) {
+        runtime.log(info(`Transcript archived: ${resetResult.archivedTranscriptPath}`));
+      } else if (resetResult.transcriptArchiveError) {
+        runtime.log(info(`Transcript archive skipped: ${resetResult.transcriptArchiveError}`));
+      }
+    }
+  }
   if (activeMinutes) {
     runtime.log(info(`Filtered to last ${activeMinutes} minute(s)`));
   }

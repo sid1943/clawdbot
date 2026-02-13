@@ -115,6 +115,9 @@ export function registerStatusHealthSessionsCommands(program: Command) {
     .option("--verbose", "Verbose logging", false)
     .option("--store <path>", "Path to session store (default: resolved from config)")
     .option("--active <minutes>", "Only show sessions updated within the past N minutes")
+    .option("--reset-main", "Reset main session key and start fresh", false)
+    .option("--keep-transcript", "Keep main transcript file when resetting", false)
+    .option("--yes", "Confirm destructive session reset", false)
     .addHelpText(
       "after",
       () =>
@@ -123,6 +126,7 @@ export function registerStatusHealthSessionsCommands(program: Command) {
           ["openclaw sessions --active 120", "Only last 2 hours."],
           ["openclaw sessions --json", "Machine-readable output."],
           ["openclaw sessions --store ./tmp/sessions.json", "Use a specific session store."],
+          ["openclaw sessions --reset-main --yes", "Reset only the main session."],
         ])}\n\n${theme.muted(
           "Shows token usage per session when the agent reports it; set agents.defaults.contextTokens to cap the window and show %.",
         )}`,
@@ -139,6 +143,9 @@ export function registerStatusHealthSessionsCommands(program: Command) {
           json: Boolean(opts.json),
           store: opts.store as string | undefined,
           active: opts.active as string | undefined,
+          resetMain: Boolean(opts.resetMain),
+          keepTranscript: Boolean(opts.keepTranscript),
+          yes: Boolean(opts.yes),
         },
         defaultRuntime,
       );
