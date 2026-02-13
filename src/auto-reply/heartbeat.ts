@@ -93,6 +93,63 @@ function stripTokenAtEdges(raw: string): { text: string; didStrip: boolean } {
   return { text: collapsed, didStrip };
 }
 
+function stripHeartbeatPromptScaffold(raw: string): { text: string; didStrip: boolean } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { text: "", didStrip: false };
+  }
+  const lower = trimmed.toLowerCase();
+  const promptNeedle = "read heartbeat.md if it exists (workspace context).";
+  if (!lower.includes(promptNeedle)) {
+    return { text: trimmed, didStrip: false };
+  }
+
+  const lines = trimmed.split(/\r?\n/);
+  const keep: string[] = [];
+  for (const line of lines) {
+    const lineTrimmed = line.trim();
+    if (!lineTrimmed) {
+      continue;
+    }
+    const lineLower = lineTrimmed.toLowerCase();
+    if (lineLower === "```" || lineLower.startsWith("```json")) {
+      continue;
+    }
+    if (lineLower.startsWith("conversation info (untrusted metadata):")) {
+      continue;
+    }
+    if (
+      lineLower.includes(`"${HEARTBEAT_TOKEN.toLowerCase()}"`) ||
+      lineLower.includes('"conversation_label"')
+    ) {
+      continue;
+    }
+    if (
+      lineLower.startsWith("read heartbeat.md if it exists") ||
+      lineLower.includes("follow it strictly.") ||
+      lineLower.includes("do not infer or repeat old tasks from prior chats.") ||
+      lineLower.includes("if nothing needs attention, reply heartbeat_ok")
+    ) {
+      continue;
+    }
+    if (
+      lineLower.startsWith("current time:") ||
+      lineLower.includes("heartbeat poll") ||
+      lineLower.includes("heartbeat wake")
+    ) {
+      continue;
+    }
+    if (lineLower === HEARTBEAT_TOKEN.toLowerCase()) {
+      continue;
+    }
+    if (/^[[\]{}:,"]+$/.test(lineTrimmed)) {
+      continue;
+    }
+    keep.push(lineTrimmed);
+  }
+  return { text: keep.join("\n").trim(), didStrip: true };
+}
+
 export function stripHeartbeatToken(
   raw?: string,
   opts: { mode?: StripHeartbeatMode; maxAckChars?: number } = {},
@@ -106,6 +163,11 @@ export function stripHeartbeatToken(
   }
 
   const mode: StripHeartbeatMode = opts.mode ?? "message";
+  const scaffold = mode === "heartbeat" ? stripHeartbeatPromptScaffold(trimmed) : null;
+  const candidate = scaffold ? scaffold.text : trimmed;
+  if (!candidate) {
+    return { shouldSkip: true, text: "", didStrip: true };
+  }
   const maxAckCharsRaw = opts.maxAckChars;
   const parsedAckChars =
     typeof maxAckCharsRaw === "string" ? Number(maxAckCharsRaw) : maxAckCharsRaw;
@@ -128,18 +190,23 @@ export function stripHeartbeatToken(
       .replace(/^[*`~_]+/, "")
       .replace(/[*`~_]+$/, "");
 
-  const trimmedNormalized = stripMarkup(trimmed);
-  const hasToken = trimmed.includes(HEARTBEAT_TOKEN) || trimmedNormalized.includes(HEARTBEAT_TOKEN);
+  const trimmedNormalized = stripMarkup(candidate);
+  const hasToken =
+    candidate.includes(HEARTBEAT_TOKEN) || trimmedNormalized.includes(HEARTBEAT_TOKEN);
   if (!hasToken) {
-    return { shouldSkip: false, text: trimmed, didStrip: false };
+    return {
+      shouldSkip: false,
+      text: candidate,
+      didStrip: scaffold?.didStrip ?? false,
+    };
   }
 
-  const strippedOriginal = stripTokenAtEdges(trimmed);
+  const strippedOriginal = stripTokenAtEdges(candidate);
   const strippedNormalized = stripTokenAtEdges(trimmedNormalized);
   const picked =
     strippedOriginal.didStrip && strippedOriginal.text ? strippedOriginal : strippedNormalized;
   if (!picked.didStrip) {
-    return { shouldSkip: false, text: trimmed, didStrip: false };
+    return { shouldSkip: false, text: candidate, didStrip: scaffold?.didStrip ?? false };
   }
 
   if (!picked.text) {

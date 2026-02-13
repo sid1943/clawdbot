@@ -107,6 +107,37 @@ describe("stripHeartbeatToken", () => {
       didStrip: true,
     });
   });
+
+  it("drops heartbeat prompt scaffold echoes", () => {
+    const echoed = `Conversation info (untrusted metadata):
+\`\`\`json
+{
+  "conversation_label": "telegram:6438593762"
+}
+\`\`\`
+Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.
+Current time: Friday, February 13th, 2026 - 5:14 PM (America/New_York)
+
+HEARTBEAT_OK`;
+    expect(stripHeartbeatToken(echoed, { mode: "heartbeat" })).toEqual({
+      shouldSkip: true,
+      text: "",
+      didStrip: true,
+    });
+  });
+
+  it("keeps actionable content when heartbeat scaffold is echoed", () => {
+    const echoed = `Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.
+Current time: Friday, February 13th, 2026 - 5:14 PM (America/New_York)
+
+- Check calendar for events in next 2 hours
+HEARTBEAT_OK`;
+    expect(stripHeartbeatToken(echoed, { mode: "heartbeat" })).toEqual({
+      shouldSkip: false,
+      text: "- Check calendar for events in next 2 hours",
+      didStrip: true,
+    });
+  });
 });
 
 describe("isHeartbeatContentEffectivelyEmpty", () => {
