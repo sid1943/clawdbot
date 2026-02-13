@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { OpenClawConfig } from "../config/config.js";
 
 const deliverOutboundPayloadsMock = vi.fn();
 const resolveOutboundTargetMock = vi.fn();
@@ -13,6 +14,16 @@ vi.mock("./outbound/targets.js", () => ({
 
 const { isSensitiveSystemNotification, sendSystemNotificationToTelegramAdmin } =
   await import("./system-notifications.js");
+
+function createTestConfig(): OpenClawConfig {
+  return {
+    channels: {
+      telegram: {
+        allowFrom: ["6438593762"],
+      },
+    },
+  };
+}
 
 describe("system-notifications", () => {
   beforeEach(() => {
@@ -29,13 +40,7 @@ describe("system-notifications", () => {
 
   it("sends sensitive notifications to telegram allowFrom target", async () => {
     const sent = await sendSystemNotificationToTelegramAdmin({
-      cfg: {
-        channels: {
-          telegram: {
-            allowFrom: ["6438593762"],
-          },
-        },
-      } as any,
+      cfg: createTestConfig(),
       text: "Pairing code: ABCD1234",
       reason: "explicit_service_status_request",
     });
@@ -52,13 +57,7 @@ describe("system-notifications", () => {
 
   it("does not send when cross-app reason is missing", async () => {
     const sent = await sendSystemNotificationToTelegramAdmin({
-      cfg: {
-        channels: {
-          telegram: {
-            allowFrom: ["6438593762"],
-          },
-        },
-      } as any,
+      cfg: createTestConfig(),
       text: "Pairing code: ABCD1234",
     });
 
@@ -68,13 +67,7 @@ describe("system-notifications", () => {
 
   it("sends for no-response escalation reason", async () => {
     const sent = await sendSystemNotificationToTelegramAdmin({
-      cfg: {
-        channels: {
-          telegram: {
-            allowFrom: ["6438593762"],
-          },
-        },
-      } as any,
+      cfg: createTestConfig(),
       text: "OpenClaw: access not configured.",
       reason: "no_response_escalation",
     });
@@ -85,13 +78,7 @@ describe("system-notifications", () => {
 
   it("does not send non-sensitive notifications", async () => {
     const sent = await sendSystemNotificationToTelegramAdmin({
-      cfg: {
-        channels: {
-          telegram: {
-            allowFrom: ["6438593762"],
-          },
-        },
-      } as any,
+      cfg: createTestConfig(),
       text: "Routine note",
       reason: "explicit_service_status_request",
     });
