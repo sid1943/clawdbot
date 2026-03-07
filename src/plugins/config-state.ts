@@ -191,6 +191,16 @@ export function resolveEnableState(
   if (origin === "bundled") {
     return { enabled: false, reason: "bundled (disabled by default)" };
   }
+  // Non-bundled plugins discovered from extension directories (global/workspace)
+  // must be explicitly trusted via plugins.allow or plugins.entries.<id>.enabled
+  // when no allowlist is configured. Without this gate, any code dropped into an
+  // extensions directory would auto-load and execute without user consent.
+  if (config.allow.length === 0 && (origin === "global" || origin === "workspace")) {
+    return {
+      enabled: false,
+      reason: "requires plugins.allow or explicit enable (discovered extension)",
+    };
+  }
   return { enabled: true };
 }
 
